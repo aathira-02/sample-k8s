@@ -1,0 +1,48 @@
+substitutions:
+  _PROJECT_ID: 'mythic-cocoa-463514-i6'
+  _LOCATION: 'us-central1-a'
+  _CLUSTER_NAME: 'standard-cluster-1'
+  _IMAGE_PATH: 'us-central1-docker.pkg.dev/mythic-cocoa-463514-i6/gcf-artifacts'
+
+steps:
+
+  # Step 1: Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_IMAGE_PATH}/hello-app:latest', '.']
+
+  # Step 2: Push Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_IMAGE_PATH}/hello-app:latest']
+
+  # Step 3: Get GKE credentials
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'get-credentials'
+    args:
+      - 'container'
+      - 'clusters'
+      - 'get-credentials'
+      - '${_CLUSTER_NAME}'
+      - '--zone=${_LOCATION}'
+      - '--project=${_PROJECT_ID}'
+
+  # Step 4: Deploy using Helm
+  - name: 'gcr.io/cloud-builders/helm:v3.14.0'
+    id: 'helm-deploy'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        gcloud container clusters get-credentials ${_CLUSTER_NAME} --zone=${_LOCATION} --project=${_PROJECT_ID}
+        helm upgrade --install hello-app ./helm/hello-app \
+          --set image.repository=${_IMAGE_PATH}/hello-app \
+          --set image.tag=latest \
+          --namespace default \
+          --wait
+    env:
+      - 'KUBECONFIG=/root/.kube/config'
+
+
+images:
+  - '${_IMAGE_PATH}/hello-app:latest'
+
+timeout: 3000s

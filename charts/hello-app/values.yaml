@@ -1,0 +1,10 @@
+replicaCount: 2
+ 
+image:
+  repository: us-central1-docker.pkg.dev/mythic-cocoa-463514-i6/gcf-artifacts/hello-app
+  tag: latest
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP
+  port: 8080
+ 
