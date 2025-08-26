@@ -8,7 +8,6 @@ import (
 func helloHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintln(w, "Hello, World!")
 }
-
 func main() {
     http.HandleFunc("/", helloHandler)
 
