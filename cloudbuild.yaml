@@ -3,14 +3,23 @@ substitutions:
   _LOCATION: 'us-central1-a'
   _CLUSTER_NAME: 'standard-cluster-1'
   _IMAGE_PATH: 'us-central1-docker.pkg.dev/mythic-cocoa-463514-i6/gcf-artifacts'
- 
+
+logs_bucket: 'gs://project_code_samples'
+
+
 steps:
  
   # Step 1: Build Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', '${_IMAGE_PATH}/hello-app:latest', '.']
+  
+  # Step 2: Scan
+  - name: 'bridgecrew/checkov:latest'
+    entrypoint: 'checkov'
+    args: ['-d', '.', '-f', 'Dockerfile']
+
  
-  # Step 2: Push Docker image
+  # Step 3: Push Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_IMAGE_PATH}/hello-app:latest']
  
