@@ -25,7 +25,7 @@ steps:
       - '--project=${PROJECT_ID}'
 
   # Step 5: Deploy using Helm
-  - name: 'gcr.io/${PROJECT_ID}/cloud-builders/helm'
+  - name: 'gcr.io/cloud-builders-community/helm'
     args:
       [
         'upgrade', '--install', 'myapp',
