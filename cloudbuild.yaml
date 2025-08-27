@@ -22,14 +22,14 @@ steps:
       - 'get-credentials'
       - '${_CLUSTER_NAME}'
       - '--zone=${_LOCATION}'
-      - '--project=${$PROJECT_ID}'
+      - '--project=${PROJECT_ID}'
 
   # Step 5: Deploy using Helm
-  - name: 'gcr.io/cloud-builders/helm:3.18.6'
+  - name: 'gcr.io/cloud-builders/helm'
     args:
       [
         'upgrade', '--install', 'myapp',
-        './helm/myapp',
+        './helm/hello-app',
         '--namespace', 'default',
         '--values', './charts/hello-app/values.yaml',
         '--set', 'image.repository=${_IMAGE_PATH}/hello-app',
