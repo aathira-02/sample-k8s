@@ -1,31 +1,19 @@
-substitutions:
-  _PROJECT_ID: 'mythic-cocoa-463514-i6'
-  _LOCATION: 'us-central1-a'
-  _CLUSTER_NAME: 'standard-cluster-1'
-  _IMAGE_PATH: 'us-central1-docker.pkg.dev/mythic-cocoa-463514-i6/gcf-artifacts'
-
-logs_bucket: 'gs://project_code_samples'
-
-
 steps:
- 
   # Step 1: Build Docker image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '${_IMAGE_PATH}/hello-app:latest', '.']
-  
+    args: ['build', '-t', '${_IMAGE_PATH}/hello-app:$SHORT_SHA', '.']
+
   # Step 2: Scan
   - name: 'bridgecrew/checkov:latest'
     entrypoint: 'checkov'
     args: ['-d', '.', '-f', 'Dockerfile']
-    allow_failure: true       #testing purpose
+    allow_failure: true
 
-
- 
   # Step 3: Push Docker image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '${_IMAGE_PATH}/hello-app:latest']
- 
-  # Step 3: Get GKE credentials
+    args: ['push', '${_IMAGE_PATH}/hello-app:$SHORT_SHA']
+
+  # Step 4: Get GKE credentials
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'get-credentials'
     args:
@@ -34,24 +22,29 @@ steps:
       - 'get-credentials'
       - '${_CLUSTER_NAME}'
       - '--zone=${_LOCATION}'
-      - '--project=${_PROJECT_ID}'
- 
-  # Step 4: Deploy using Helm
-  - name: 'gcr.io/cloud-builders/kubectl'
-    id: 'helm-deploy'
-    entrypoint: 'bash'
+      - '--project=${$PROJECT_ID}'
+
+  # Step 5: Deploy using Helm
+  - name: 'gcr.io/cloud-builders/helm:3.18.6'
     args:
-      - '-c'
-      - |
-        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-        helm upgrade --install hello-app ./charts/hello-app \
-          --set image.repository=${_IMAGE_PATH}/hello-app \
-          --set image.tag=latest \
-          --namespace default \
-          --wait
- 
+      [
+        'upgrade', '--install', 'myapp',
+        './helm/myapp',
+        '--namespace', 'default',
+        '--values', './charts/hello-app/values.yaml',
+        '--set', 'image.repository=${_IMAGE_PATH}/hello-app',
+        '--set', 'image.tag=$SHORT_SHA'
+      ]
+
 images:
-  - '${_IMAGE_PATH}/hello-app:latest'
- 
+  - '${_IMAGE_PATH}/hello-app:$SHORT_SHA'
+
+substitutions:
+  _LOCATION: 'us-central1-a'
+  _CLUSTER_NAME: 'standard-cluster-1'
+  _IMAGE_PATH: 'us-central1-docker.pkg.dev/mythic-cocoa-463514-i6/gcf-artifacts'
+   # Will be overridden via CLI
+
+logs_bucket: 'gs://project_code_samples'
+
 timeout: 3000s
- 
