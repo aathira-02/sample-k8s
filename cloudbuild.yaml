@@ -25,16 +25,18 @@ steps:
       - '--project=${PROJECT_ID}'
 
   # Step 5: Deploy using Helm
-  - name: 'alpine/helm'
+  - name: 'gcr.io/cloud-builders/kubectl'
+    id: 'helm-deploy'
+    entrypoint: 'bash'
     args:
-      [
-        'upgrade', '--install', 'myapp',
-        './helm/hello-app',
-        '--namespace', 'default',
-        '--values', './charts/hello-app/values.yaml',
-        '--set', 'image.repository=${_IMAGE_PATH}/hello-app',
-        '--set', 'image.tag=$SHORT_SHA'
-      ]
+      - '-c'
+      - |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        helm upgrade --install hello-app ./charts/hello-app \
+          --set image.repository=${_IMAGE_PATH}/hello-app \
+          --set image.tag=latest \
+          --namespace default \
+          --wait
 
 images:
   - '${_IMAGE_PATH}/hello-app:$SHORT_SHA'
