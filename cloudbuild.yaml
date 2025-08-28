@@ -33,7 +33,7 @@ steps:
     args: ['-c', 'echo "Waiting for QA approval..."']
 
   - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'approve-qa'
+    id: 'approve-qa-sample'
     waitFor: ['-']  # manual step
     entrypoint: 'bash'
     args: ['-c', 'echo " still Waiting for QA approval..."']
