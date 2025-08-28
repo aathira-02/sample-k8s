@@ -25,26 +25,26 @@ steps:
       - '--project=${PROJECT_ID}'
 
   # Step 5: Deploy using Helm
-
-  - name: 'alpine/helm:3.12.3'  # Or latest stable version
-    entrypoint: 'sh'
-    args:
-      - '-c'
-      - |
-        helm version
-
-  
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'approve-qa-sample'
-    waitFor: ['-']  # manual step
+  - name: 'gcr.io/cloud-builders/kubectl'
+    id: 'helm-deploy'
     entrypoint: 'bash'
-    args: ['-c', 'echo "Waiting for QA approval..."']
-
+    args:
+        [
+          'upgrade', '--install', 'myapp',
+          './helm/myapp',
+          '--namespace', 'qa',
+          '--values', './helm/myapp/values-qa.yaml',
+          '--set', 'image.repository=gcr.io/$PROJECT_ID/myapp',
+          '--set', 'image.tag=$SHORT_SHA'
+        ]
+    
+  # Step 6: Approve QA  
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'approve-qa'
     waitFor: ['-']  # manual step
     entrypoint: 'bash'
     args: ['-c', 'echo "Waiting for QA approval..."']
+
 images:
   - '${_IMAGE_PATH}/hello-app:$SHORT_SHA'
 
