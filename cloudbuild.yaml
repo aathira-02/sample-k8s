@@ -29,22 +29,15 @@ steps:
     id: 'helm-deploy'
     entrypoint: 'bash'
     args:
-        [
-          'upgrade', '--install', 'hello-app',
-          './helm/hello-app',
-          '--namespace', 'default',
-          '--values', './helm/hello-app/values.yaml',
-          '--set', 'image.repository=${_IMAGE_PATH}/hello-app',
-          '--set', 'image.tag=$SHORT_SHA'
-        ]
-    
-  # Step 6: Approve QA  
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'approve-qa'
-    waitFor: ['-']  # manual step
-    entrypoint: 'bash'
-    args: ['-c', 'echo "Waiting for QA approval..."']
-
+      - '-c'
+      - |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        helm upgrade --install hello-app ./charts/hello-app \
+          --set image.repository=${_IMAGE_PATH}/hello-app \
+          --set image.tag=latest \
+          --namespace default \
+          --wait
+          
 images:
   - '${_IMAGE_PATH}/hello-app:$SHORT_SHA'
 
