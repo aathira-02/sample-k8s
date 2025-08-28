@@ -25,16 +25,13 @@ steps:
       - '--project=${PROJECT_ID}'
 
   # Step 5: Deploy using Helm
-  - name: 'gcr.io/cloud-builders-community/helm'
+
+  - name: 'alpine/helm:3.12.3'  # Or latest stable version
+    entrypoint: 'sh'
     args:
-      [
-        'upgrade', '--install', 'hello-app',
-        './helm/hello-app',
-        '--namespace', 'default',
-        '--values', './helm/hello-app/values.yaml',
-        '--set', 'image.repository={_IMAGE_PATH}/hello-app',
-        '--set', 'image.tag=$SHORT_SHA'
-      ]
+      - '-c'
+      - |
+        helm version
 
   
   - name: 'gcr.io/cloud-builders/gcloud'
