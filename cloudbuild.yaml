@@ -30,11 +30,11 @@ steps:
     entrypoint: 'bash'
     args:
         [
-          'upgrade', '--install', 'myapp',
-          './helm/myapp',
-          '--namespace', 'qa',
-          '--values', './helm/myapp/values-qa.yaml',
-          '--set', 'image.repository=gcr.io/$PROJECT_ID/myapp',
+          'upgrade', '--install', 'hello-app',
+          './helm/hello-app',
+          '--namespace', 'default',
+          '--values', './helm/hello-app/values.yaml',
+          '--set', 'image.repository=${_IMAGE_PATH}/hello-app',
           '--set', 'image.tag=$SHORT_SHA'
         ]
     
