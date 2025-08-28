@@ -25,18 +25,17 @@ steps:
       - '--project=${PROJECT_ID}'
 
   # Step 5: Deploy using Helm
-  - name: 'gcr.io/cloud-builders/kubectl'
-    id: 'helm-deploy'
-    entrypoint: 'bash'
+  - name: 'gcr.io/cloud-builders-community/helm'
     args:
-      - '-c'
-      - |
-        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-        helm upgrade --install hello-app ./charts/hello-app \
-          --set image.repository=${_IMAGE_PATH}/hello-app \
-          --set image.tag=latest \
-          --namespace default \
-          --wait
+      [
+        'upgrade', '--install', 'hello-app',
+        './helm/hello-app',
+        '--namespace', 'default',
+        '--values', './helm/hello-app/values.yaml',
+        '--set', 'image.repository={_IMAGE_PATH}/hello-app',
+        '--set', 'image.tag=$SHORT_SHA'
+      ]
+
   
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'approve-qa'
