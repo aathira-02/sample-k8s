@@ -24,17 +24,6 @@ steps:
       - '--zone=${_LOCATION}'
       - '--project=${PROJECT_ID}'
 
-  # Step 5: Deploy using Helm
-  - name: 'gcr.io/cloud-builders-community/helm'
-    args:
-      [
-        'upgrade', '--install', 'hello-app',
-        './helm/hello-app',
-        '--namespace', 'default',
-        '--values', './helm/hello-app/values.yaml',
-        '--set', 'image.repository={_IMAGE_PATH}/hello-app',
-        '--set', 'image.tag=$SHORT_SHA'
-      ]
 
   
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -43,6 +32,11 @@ steps:
     entrypoint: 'bash'
     args: ['-c', 'echo "Waiting for QA approval..."']
 
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'approve-qa'
+    waitFor: ['-']  # manual step
+    entrypoint: 'bash'
+    args: ['-c', 'echo " still Waiting for QA approval..."']
 images:
   - '${_IMAGE_PATH}/hello-app:$SHORT_SHA'
 
