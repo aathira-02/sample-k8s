@@ -1,7 +1,7 @@
 steps:
   # Step 1: Build Docker image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '${_IMAGE_PATH}/hello-app:$SHORT_SHA', '.']
+    args: ['build', '-t', '${_IMAGE_PATH}/hello-app:latest', '.']
 
   # Step 2: Scan
   - name: 'bridgecrew/checkov:latest'
@@ -11,7 +11,7 @@ steps:
 
   # Step 3: Push Docker image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '${_IMAGE_PATH}/hello-app:$SHORT_SHA']
+    args: ['push', '${_IMAGE_PATH}/hello-app:latest']
 
   # Step 4: Get GKE credentials
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -45,16 +45,16 @@ steps:
     args: ['-c', 'echo "Waiting for QA approval..."']
 
 images:
-  - '${_IMAGE_PATH}/hello-app:$SHORT_SHA'
+  - '${_IMAGE_PATH}/hello-app:latest'
 
 substitutions:
   _LOCATION: 'us-central1-a'
   _CLUSTER_NAME: 'standard-cluster-1'
   _IMAGE_PATH: 'us-central1-docker.pkg.dev/mythic-cocoa-463514-i6/gcf-artifacts'
 
-options:
-  pool:
-    name: 'projects/mythic-cocoa-463514-i6/locations/us-central1/workerPools/cluster'
+#options:
+#  pool:
+#    name: 'projects/mythic-cocoa-463514-i6/locations/us-central1/workerPools/cluster'
 
 logs_bucket: 'gs://project_code_samples'
 
