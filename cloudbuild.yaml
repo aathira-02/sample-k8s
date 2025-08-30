@@ -37,18 +37,24 @@ steps:
           --set image.tag=latest \
           --namespace default \
           --wait
+  
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'approve-qa'
+    waitFor: ['-']  # manual step
+    entrypoint: 'bash'
+    args: ['-c', 'echo "Waiting for QA approval..."']
 
 images:
   - '${_IMAGE_PATH}/hello-app:$SHORT_SHA'
 
 substitutions:
-  _LOCATION: 'northamerica-northeast1-a'
+  _LOCATION: 'us-central1-a'
   _CLUSTER_NAME: 'standard-cluster-1'
-  _IMAGE_PATH: 'northamerica-northeast1-docker.pkg.dev/mythic-cocoa-463514-i6/cluster'
+  _IMAGE_PATH: 'us-central1-docker.pkg.dev/mythic-cocoa-463514-i6/gcf-artifacts'
 
 options:
   pool:
-    name: 'projects/mythic-cocoa-463514-i6/locations/northamerica-northeast1/workerPools/cluster'
+    name: 'projects/mythic-cocoa-463514-i6/locations/us-central1/workerPools/cluster'
 
 logs_bucket: 'gs://project_code_samples'
 
