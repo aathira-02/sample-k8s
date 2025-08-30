@@ -1,52 +1,10 @@
-appName : payment-switch-merchant-gateway
-releaseName : payment-switch-merchant-gateway-release
-namespace : pymtswitch
-clusterLocation : us-central1
-chartName : payment-switch-merchant-gateway-chart
-serviceAccountName : paymentswitch-merchantgtwy-sa
-gcp_project : gpcrwd-d-pymt
-negName : '{"exposed_ports":{"8080":{"name": "d-pymntswitch-merchant-gateway-neg"}}}'
-negEnabled : true
-clusterName: pymt-d-gke-usc1
-clusterSecretStoreName: pymntswitch-merchant-gateway-secret-store
-externalSecretName: pymtswitch-merchant-gateway-secrets
-#secrets:
-#  onboarding_app_write_db_key: onboarding-app-write-db-pass
-#  onboarding_app_write_remotekey_ref: alloydb-pymtswitch-onboarding-app-write-gsm
+replicaCount: 2
+ 
 image:
-  repository: nginx
+  repository: us-central1-docker.pkg.dev/mythic-cocoa-463514-i6/gcf-artifacts/hello-app
+  tag: latest
   pullPolicy: IfNotPresent
-  tag: "1"
-
 service:
   type: ClusterIP
   port: 8080
-
-ingress:
-  enabled: false
-
-resources: {}
-
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}
-
-hpa :
-  name : payment-switch-merchant-gateway-hpa
-  minReplicas : 1
-  maxReplicas : 2
-  cpuUtilization : 70
-
-limits:
-  cpu: 500m
-  memory: 2Gi
-
-requests:
-  cpu: 500m
-  memory: 2Gi
-
-env:
-  GCP_PROJECT_ID: "gpcrwd-d-pymt"
-
+ 

@@ -1,61 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name:  {{ .Values.appName }}
-  namespace: {{ .Values.namespace }}
-  labels:
-    app: {{ .Values.appName }}
-    chart: {{ .Values.appName }}-0.1.0
-    release: {{ .Values.releaseName }}
-    heritage: Helm
+  name: hello-app
 spec:
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ .Values.appName }}
-      release: {{ .Values.releaseName }}
+      app: hello-app
   template:
     metadata:
-      labels:
-        app: {{ .Values.appName }}
-        release: {{ .Values.releaseName }}
+      labels: 
+        app: hello-app
     spec:
-      serviceAccountName: {{ .Values.serviceAccountName }}
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 109
       containers:
-        - name: {{ .Values.appName }}
-          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
-          imagePullPolicy: IfNotPresent
+        - name: hello-app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           ports:
-            - containerPort: {{ .Values.service.port }}
-          securityContext:
-            allowPrivilegeEscalation: false
-          env:
-          {{- range $key, $val := .Values.env }}
-            - name: {{ $key }}
-              value: {{ $val | quote }}
-          {{- end }}
-          livenessProbe:
-            failureThreshold: 5
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-          readinessProbe:
-            failureThreshold: 5
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-          resources:
-            limits:
-              cpu: {{ .Values.limits.cpu }}
-              memory: {{ .Values.limits.memory }}
-            requests:
-              cpu: {{ .Values.requests.cpu }}
-              memory: {{ .Values.requests.memory }}
+            - containerPort: 8080
