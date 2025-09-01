@@ -7,3 +7,16 @@
       echo "Testing connectivity to GKE API at https://10.92.36.2/version"
       apk add --no-cache curl
       curl -k --connect-timeout 10 https://10.92.36.2/version && echo "Connection success!" || (echo "Connection failed!" && exit 1)
+
+
+      gcloud compute firewall-rules create allow-cloudbuild-to-gke-api \
+  --project=<GKE_PROJECT_ID> \
+  --network=<GKE_VPC_NAME> \
+  --direction=INGRESS \
+  --priority=1000 \
+  --action=ALLOW \
+  --rules=tcp:443 \
+  --source-ranges=<WORKER_POOL_SUBNET_CIDR> \
+  --target-tags=<OPTIONAL: only if you're using GKE node tags> \
+  --description="Allow Cloud Build private pool to reach GKE private API"
+
