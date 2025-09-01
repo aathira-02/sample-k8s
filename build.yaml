@@ -1,22 +1,165 @@
+Thanks for confirming. Since you’ve:
+
+✅ Created the ingress firewall rule (without `--destination-ranges`)
+
+✅ Allowed TCP:443 from the **Cloud Build worker pool’s subnet CIDR** to the **GKE VPC**
+
+✅ And you still get a **`curl: (28) Connection timed out`** trying to hit `https://10.92.36.2/version`
+
+---
+
+# ⚠️ This strongly points to **missing network connectivity** (routing), not just firewall
+
+Firewalls are permissive now, but if there's **no network route**, traffic won't even reach the cluster.
+
+---
+
+## ✅ Let's Go Step-by-Step to Debug What’s Still Missing
+
+### 🔍 1. **Confirm Subnet CIDR of the Worker Pool**
+
+Run:
+
+```bash
+gcloud builds worker-pools describe test-private-pool \
+  --project=gpcp2pe-n-cicd \
+  --location=us-east4
+```
+
+Then run:
+
+```bash
+gcloud compute networks subnets describe <SUBNET_NAME> \
+  --region=us-east4 \
+  --project=<PROJECT_OF_SUBNET>
+```
+
+Note the value of:
+
+```yaml
+ipCidrRange: <WORKER_POOL_SUBNET_CIDR>
+```
+
+You should have used **this CIDR** as the `--source-ranges` in the firewall rule.
+
+---
+
+### 🔍 2. **Are the VPCs Peered?**
+
+You mentioned:
+
+* GKE cluster in project: `gpcp2p-q-pymt`
+* Network in: `gpcp2p-n-pymt`
+* Cloud Build running in: `gpcp2pe-n-cicd`
+
+Your Cloud Build private pool **must be in a VPC that has a VPC peering connection to the GKE VPC.**
+
+To check peering:
+
+```bash
+gcloud compute networks peerings list --project=gpcp2p-q-pymt
+```
+
+You should see a peering between the GKE VPC and the network your worker pool is on.
+
+### ✅ If not peered — stop here and set up [VPC Network Peering](https://cloud.google.com/vpc/docs/using-vpc-peering)
+
+Example command:
+
+```bash
+gcloud compute networks peerings create peering-to-workerpool \
+  --network=<GKE_VPC_NAME> \
+  --peer-project=<CLOUDBUILD_PROJECT> \
+  --peer-network=<WORKERPOOL_VPC_NAME> \
+  --auto-create-routes \
+  --project=gpcp2p-q-pymt
+```
+
+Repeat on the other side (from worker pool network to GKE).
+
+---
+
+### 🔍 3. **Check Custom Routes Are Shared in the Peering**
+
+Peering **must have “export custom routes” and “import custom routes” enabled.**
+
+Check this:
+
+```bash
+gcloud compute networks peerings describe <PEERING_NAME> --network=<NETWORK> --project=<PROJECT>
+```
+
+If `exportCustomRoutes: false` → then **traffic to 10.92.x.x won't be routable.**
+
+To fix:
+
+You must delete and recreate the peering with `--export-custom-routes` and `--import-custom-routes`:
+
+```bash
+gcloud compute networks peerings delete <PEERING_NAME> --network=<NETWORK> --project=<PROJECT>
+```
+
+Then recreate with:
+
+```bash
+gcloud compute networks peerings create peering-to-gke \
+  --network=<NETWORK_A> \
+  --peer-project=<PROJECT_B> \
+  --peer-network=<NETWORK_B> \
+  --auto-create-routes \
+  --export-custom-routes \
+  --import-custom-routes \
+  --project=<PROJECT_A>
+```
+
+Repeat from both sides.
+
+---
+
+### 🔍 4. **Check If Routes Are Working from Cloud Build to GKE**
+
+In your **Cloud Build `cloudbuild.yaml`**, add this debug step:
+
+```yaml
 - name: 'alpine'
-  id: 'test-connectivity'
+  id: 'debug-network'
   entrypoint: 'sh'
   args:
     - '-c'
     - |
-      echo "Testing connectivity to GKE API at https://10.92.36.2/version"
-      apk add --no-cache curl
-      curl -k --connect-timeout 10 https://10.92.36.2/version && echo "Connection success!" || (echo "Connection failed!" && exit 1)
+      apk add --no-cache curl iproute2 bind-tools
+      echo "Checking routes:"
+      ip route
+      echo "Trying to ping GKE API IP..."
+      ping -c 3 10.92.36.2
+      echo "Traceroute:"
+      traceroute 10.92.36.2
+      echo "Curling GKE API:"
+      curl -v --connect-timeout 10 https://10.92.36.2/version
+```
 
+Post the output here. It will show:
 
-      gcloud compute firewall-rules create allow-cloudbuild-to-gke-api \
-  --project=<GKE_PROJECT_ID> \
-  --network=<GKE_VPC_NAME> \
-  --direction=INGRESS \
-  --priority=1000 \
-  --action=ALLOW \
-  --rules=tcp:443 \
-  --source-ranges=<WORKER_POOL_SUBNET_CIDR> \
-  --target-tags=<OPTIONAL: only if you're using GKE node tags> \
-  --description="Allow Cloud Build private pool to reach GKE private API"
+* If a route to `10.92.36.2` exists
+* If DNS is resolving (even if it shouldn't matter here)
+* Whether ping packets are routed
+* Whether curl hits a routing block or firewall
 
+---
+
+## ✅ Summary Checklist
+
+| Checkpoint                                                                      | Done? |
+| ------------------------------------------------------------------------------- | ----- |
+| 🔲 Cloud Build worker pool subnet CIDR is correct                               |       |
+| 🔲 Firewall rule created in GKE VPC allowing ingress TCP:443 from worker subnet |       |
+| 🔲 VPC peering exists between Cloud Build VPC and GKE VPC                       |       |
+| 🔲 VPC peering has `export-custom-routes` and `import-custom-routes` enabled    |       |
+| 🔲 Routes between VPCs allow reaching `10.92.36.2`                              |       |
+| 🔲 No organization policy blocking Private Google Access                        |       |
+
+---
+
+Once you run the `ip route` / `ping` / `traceroute` test inside the Cloud Build worker, we can pinpoint the issue definitively.
+
+Would you like to paste the debug step output here next?
