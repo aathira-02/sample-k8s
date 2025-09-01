@@ -11,3 +11,9 @@
       ping -c 3 10.92.36.2
       echo "== Curling GKE API =="
       curl -v --connect-timeout 10 https://10.92.36.2/version
+
+
+      steps:
+- name: 'gcr.io/cloud-builders/curl'
+  entrypoint: 'curl'
+  args: ['-vk', 'https://199.36.153.4/version']
