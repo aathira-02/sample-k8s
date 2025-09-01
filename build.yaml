@@ -1,0 +1,85 @@
+steps:
+  # Step 1: Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_IMAGE_PATH}/hello-app:latest', '.']
+
+  # Step 2: Scan Dockerfile with Checkov
+  - name: 'bridgecrew/checkov:latest'
+    entrypoint: 'checkov'
+    args: ['-d', '.', '-f', 'Dockerfile']
+    allow_failure: true
+
+  # Step 3: Push Docker image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_IMAGE_PATH}/hello-app:latest']
+
+  # Step 4: Get GKE credentials (writes to /root/.kube/config)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'get-credentials'
+    args:
+      - 'container'
+      - 'clusters'
+      - 'get-credentials'
+      - '${_CLUSTER_NAME}'
+      - '--zone=${_LOCATION}'
+      - '--project=${PROJECT_ID}'
+    volumes:
+      - name: 'kubeconfig'
+        path: /root/.kube
+
+  # Step 5: Helm lint (optional but recommended)
+  - name: 'alpine/helm:3.14.0'
+    id: 'helm-lint'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        helm lint ./charts/hello-app
+    volumes:
+      - name: 'kubeconfig'
+        path: /root/.kube
+
+  # Step 6: Deploy using Helm
+  - name: 'alpine/helm:3.14.0'
+    id: 'helm-deploy'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        helm upgrade --install hello-app ./charts/hello-app \
+          --set image.repository=${_IMAGE_PATH}/hello-app \
+          --set image.tag=latest \
+          --namespace default \
+          --wait
+    volumes:
+      - name: 'kubeconfig'
+        path: /root/.kube
+
+  # Step 7: Manual QA approval step
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'approve-qa'
+    waitFor: ['-']  # Wait for manual approval to continue
+    entrypoint: 'bash'
+    args: ['-c', 'echo "Waiting for QA approval..."']
+
+# Docker image to push as build artifact
+images:
+  - '${_IMAGE_PATH}/hello-app:latest'
+
+# Custom variables
+substitutions:
+  _LOCATION: 'us-central1-a'
+  _CLUSTER_NAME: 'standard-cluster-1'
+  _IMAGE_PATH: 'us-central1-docker.pkg.dev/mythic-cocoa-463514-i6/gcf-artifacts'
+
+# Optional: Share volumes across steps (for kubeconfig)
+options:
+  volumes:
+    - name: 'kubeconfig'
+      path: /root/.kube
+
+# Optional: Logs location
+logs_bucket: 'gs://project_code_samples'
+
+# Optional: Timeout (set to 50 minutes)
+timeout: 3000s
