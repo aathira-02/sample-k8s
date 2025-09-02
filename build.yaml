@@ -1,19 +1,12 @@
-- name: 'alpine'
-  id: 'debug-network'
-  entrypoint: 'sh'
-  args:
-    - '-c'
-    - |
-      apk add --no-cache curl iproute2 bind-tools
-      echo "== IP route =="
-      ip route
-      echo "== Pinging GKE API =="
-      ping -c 3 10.92.36.2
-      echo "== Curling GKE API =="
-      curl -v --connect-timeout 10 https://10.92.36.2/version
-
-
-      steps:
-- name: 'gcr.io/cloud-builders/curl'
-  entrypoint: 'curl'
-  args: ['-vk', 'https://199.36.153.4/version']
+gcloud compute instances create bastion-vm \
+  --project=<HOST_PROJECT_ID> \
+  --zone=<ZONE> \
+  --machine-type=e2-medium \
+  --subnet=<PRIVATE_SUBNET_NAME> \
+  --tags=bastion \
+  --no-address \  # no public IP, fully private
+  --image-family=debian-12 \
+  --image-project=debian-cloud \
+  --metadata=startup-script='#! /bin/bash
+      sudo apt-get update
+      sudo apt-get install -y openssh-server'
