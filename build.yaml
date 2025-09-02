@@ -1,12 +1,38 @@
-gcloud compute instances create bastion-vm \
-  --project=<HOST_PROJECT_ID> \
-  --zone=<ZONE> \
-  --machine-type=e2-medium \
-  --subnet=<PRIVATE_SUBNET_NAME> \
-  --tags=bastion \
-  --no-address \  # no public IP, fully private
-  --image-family=debian-12 \
-  --image-project=debian-cloud \
-  --metadata=startup-script='#! /bin/bash
-      sudo apt-get update
-      sudo apt-get install -y openssh-server'
+steps:
+# Step 1: SSH into bastion and forward GKE API port
+- name: 'gcr.io/cloud-builders/gcloud'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      echo "Forwarding Kubernetes API port through bastion..."
+      gcloud compute ssh bastion-vm \
+        --project=<HOST_PROJECT_ID> \
+        --zone=<ZONE> \
+        --tunnel-through-iap \
+        -- -N -L 6443:<GKE_PRIVATE_ENDPOINT>:443 &
+
+# Step 2: Configure kubeconfig to point to forwarded port
+- name: 'gcr.io/cloud-builders/kubectl'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      kubectl config set-cluster <CLUSTER_NAME> --server=https://localhost:6443
+      kubectl config set-credentials deployer --token=$(gcloud auth print-access-token)
+      kubectl config set-context deploy-context --cluster=<CLUSTER_NAME> --user=deployer
+      kubectl config use-context deploy-context
+ 
+# Step 3: Deploy Helm charts
+- name: 'alpine/helm:3.12.0'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      helm upgrade --install my-app ./charts/my-app -n default
+timeout: '1200s'
+
+options:
+  workerPool: projects/<CICD_PROJECT>/locations/<REGION>/workerPools/<POOL_NAME>
+
+ 
