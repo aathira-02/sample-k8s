@@ -1,131 +1,81 @@
-Setting up a **GitHub Action to deploy to Google Kubernetes Engine (GKE)** involves a few key steps:
-
----
-
-## ✅ Prerequisites
-
-1. **GCP Project** with:
-
-   * GKE cluster running.
-   * `gcloud` CLI configured (for local testing).
-   * `kubectl` configured for your cluster.
-
-2. **GitHub Repository** with:
-
-   * App source code and Dockerfile.
-   * Kubernetes deployment YAMLs (or Helm charts).
-
-3. **Service Account** in GCP with necessary permissions:
-
-   * `Kubernetes Engine Developer`
-   * `Storage Admin` (for pushing to GCR/Artifact Registry)
-   * `Service Account User` (if impersonating other service accounts)
-
----
-
-## 🔐 Step 1: Create and download a service account key
-
-1. **Create a service account** in IAM:
-
-   ```bash
-   gcloud iam service-accounts create github-actions \
-     --display-name "GitHub Actions for GKE"
-   ```
-
-2. **Assign roles:**
-
-   ```bash
-   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-     --member="serviceAccount:github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-     --role="roles/container.developer"
-
-   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-     --member="serviceAccount:github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-     --role="roles/storage.admin"
-   ```
-
-3. **Generate key and download JSON:**
-
-   ```bash
-   gcloud iam service-accounts keys create key.json \
-     --iam-account=github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com
-   ```
-
-4. **Add the key as a GitHub secret:**
-
-   * Go to your GitHub repo → **Settings** → **Secrets and variables** → **Actions**.
-   * Add a secret called `GCP_SA_KEY` with the content of `key.json`.
-
----
-
-## 🛠️ Step 2: Set up your GitHub Actions workflow
-
-Create a file at `.github/workflows/deploy.yml`:
-
-```yaml
-name: Deploy to GKE
+name: Build and Deploy to GKE
 
 on:
   push:
     branches:
-      - main  # or your deployment branch
+      - main  # Adjust based on your deployment branch
 
 env:
-  PROJECT_ID: your-gcp-project-id
-  GKE_CLUSTER: your-gke-cluster-name
-  GKE_ZONE: your-cluster-zone # e.g. us-central1-a
-  DEPLOYMENT_NAME: your-k8s-deployment-name
-  IMAGE_NAME: gcr.io/${{ env.PROJECT_ID }}/your-app
+  PROJECT_ID: gpcp2p-q-pymt
+  LOCATION: us-east4
+  CLUSTER_NAME: gpcp2p-q-pymt-use4-gke
+  IMAGE_PATH: us-docker.pkg.dev/gpcp2p-q-pymt/gpcp2p-q-pymt-test
+  IMAGE_NAME: hello-app
+  NAMESPACE: default
 
 jobs:
-  deploy:
+  build-and-deploy:
+    name: Build, Scan, Push, and Deploy
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'  # Required for Workload Identity Federation
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@v2
+    # Authenticate with Google Cloud using Workload Identity Federation
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
       with:
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
-        project_id: ${{ env.PROJECT_ID }}
-        export_default_credentials: true
+        workload_identity_provider: 'projects/123456789/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID'  # Replace
+        service_account: 'cloudbuild-sa@gpcp2p-q-pymt.iam.gserviceaccount.com'
 
-    - name: Configure Docker for GCR
-      run: gcloud auth configure-docker
+    - name: Set up gcloud SDK
+      uses: google-github-actions/setup-gcloud@v2
 
-    - name: Build and Push Docker image
+    - name: Configure Docker to use gcloud as a credential helper
+      run: gcloud auth configure-docker us-docker.pkg.dev
+
+    - name: Extract short SHA
+      id: vars
+      run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+    - name: Build Docker image
       run: |
-        docker build -t $IMAGE_NAME:$GITHUB_SHA .
-        docker push $IMAGE_NAME:$GITHUB_SHA
+        docker build -t $IMAGE_PATH/$IMAGE_NAME:$SHORT_SHA .
+
+    - name: Scan Dockerfile with Checkov
+      uses: bridgecrewio/checkov-action@v12
+      with:
+        directory: '.'
+        file: 'Dockerfile'
+        quiet: true
+      continue-on-error: true
+
+    - name: Push Docker image
+      run: |
+        docker push $IMAGE_PATH/$IMAGE_NAME:$SHORT_SHA
 
     - name: Get GKE credentials
       run: |
-        gcloud container clusters get-credentials $GKE_CLUSTER --zone $GKE_ZONE
+        gcloud container clusters get-credentials "$CLUSTER_NAME" \
+          --region "$LOCATION" \
+          --project "$PROJECT_ID" \
+          --internal-ip
+        kubectl get nodes --insecure-skip-tls-verify=true || true
 
-    - name: Deploy to GKE
+    - name: Install Helm
       run: |
-        kubectl set image deployment/$DEPLOYMENT_NAME $DEPLOYMENT_NAME=$IMAGE_NAME:$GITHUB_SHA
-        kubectl rollout status deployment/$DEPLOYMENT_NAME
-```
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        helm version
 
----
-
-## 📄 Notes
-
-* Ensure your Kubernetes YAML deployment file has a container name that matches `$DEPLOYMENT_NAME`.
-* If you're using **Helm**, you can replace the `kubectl` commands with Helm install/upgrade commands.
-* If your GKE cluster is **regional**, replace `--zone` with `--region`.
-
----
-
-## 🚀 Optional Improvements
-
-* Use **Artifact Registry** instead of GCR (requires slightly different `gcloud` auth).
-* Add a **staging** environment with different branches and clusters.
-* Add **manual approval** steps or **Slack notifications**.
-
----
-
-Would you like a tailored example with your app name and GCP settings?
+    - name: Deploy to GKE using Helm
+      run: |
+        helm upgrade --install $IMAGE_NAME ./charts/hello-app \
+          --set image.repository=$IMAGE_PATH/$IMAGE_NAME \
+          --set image.tag=$SHORT_SHA \
+          --namespace $NAMESPACE \
+          --wait
