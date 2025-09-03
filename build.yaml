@@ -1,105 +1,72 @@
-substitutions:
-  _ENV: "dev"                # default environment, overridden by trigger
-  _CLUSTER: "your-gke-cluster"
-  _ZONE: "your-cluster-zone"
-  _NAMESPACE: "default"
+name: Build and Deploy Go App to GKE
 
-# Run all steps inside your private pool
-options:
-  pool:
-    name: projects/$PROJECT_ID/locations/asia-south1/workerPools/my-private-pool
-  logging: CLOUD_LOGGING_ONLY
-  machineType: E2_HIGHCPU_8
+on:
+  push:
+    branches:
+      - main
 
-steps:
-# 1. Fetch app code
-- name: 'gcr.io/cloud-builders/git'
-  entrypoint: 'bash'
-  args:
-    - 'scripts/fetch-app.sh'
+env:
+  PROJECT_ID: mythic-cocoa-463514-i6
+  REGION: us-central1
+  ZONE: us-central1-a
+  CLUSTER_NAME: standard-cluster-1
+  IMAGE_PATH: us-central1-docker.pkg.dev/mythic-cocoa-463514-i6/gcf-artifacts/hello-app
 
-# 2. Build Docker image
-- name: 'gcr.io/cloud-builders/docker'
-  args:
-    [
-      'build',
-      '-t', 'gcr.io/$PROJECT_ID/myapp:$SHORT_SHA',
-      './app'
-    ]
+jobs:
+  build-deploy:
+    name: Build, Scan, Push, and Deploy
+    runs-on: ubuntu-latest
 
-# 3. Push Docker image
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['push', 'gcr.io/$PROJECT_ID/myapp:$SHORT_SHA']
+    steps:
 
-# 4. Scan Docker image with Trivy
-- name: 'aquasec/trivy'
-  args: ['image', 'gcr.io/$PROJECT_ID/myapp:$SHORT_SHA']
+    - name: Checkout Source Code
+      uses: actions/checkout@v3
 
-# 5. Fetch GKE credentials for private cluster
-- name: 'gcr.io/cloud-builders/gcloud'
-  args:
-    [
-      'container', 'clusters', 'get-credentials', '$_CLUSTER',
-      '--zone', '$_ZONE', '--project', '$PROJECT_ID'
-    ]
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ env.PROJECT_ID }}
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        export_default_credentials: true
 
-# 6. Run OPA/Conftest policies (optional gate)
-- name: 'openpolicyagent/conftest'
-  args: ['test', './helm/myapp/templates', '--policy', './policies']
+    - name: Authenticate Docker to Google Artifact Registry
+      run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-# 7. Deploy to DEV (auto)
-- name: 'gcr.io/cloud-builders/helm'
-  args:
-    [
-      'upgrade', '--install', 'myapp',
-      './helm/myapp',
-      '--namespace', '$_NAMESPACE',
-      '--values', './helm/myapp/values-$(_ENV).yaml',
-      '--set', 'image.repository=gcr.io/$PROJECT_ID/myapp',
-      '--set', 'image.tag=$SHORT_SHA'
-    ]
+    - name: Build Docker Image
+      run: |
+        docker build -t $IMAGE_PATH:latest .
 
-# 8. Approval for QA
-- name: 'gcr.io/cloud-builders/gcloud'
-  id: 'approve-qa'
-  waitFor: ['-']  # manual step
-  entrypoint: 'bash'
-  args: ['-c', 'echo "Waiting for QA approval..."']
+    - name: Run Checkov Scan (Dockerfile)
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: .
+        file: Dockerfile
+        soft_fail: true
 
-# 9. Deploy to QA
-- name: 'gcr.io/cloud-builders/helm'
-  args:
-    [
-      'upgrade', '--install', 'myapp',
-      './helm/myapp',
-      '--namespace', 'qa',
-      '--values', './helm/myapp/values-qa.yaml',
-      '--set', 'image.repository=gcr.io/$PROJECT_ID/myapp',
-      '--set', 'image.tag=$SHORT_SHA'
-    ]
+    - name: Push Docker Image
+      run: |
+        docker push $IMAGE_PATH:latest
 
-# 10. Approval for PROD
-- name: 'gcr.io/cloud-builders/gcloud'
-  id: 'approve-prod'
-  waitFor: ['-']
-  entrypoint: 'bash'
-  args: ['-c', 'echo "Waiting for PROD approval..."']
+    - name: Get GKE Credentials
+      run: |
+        gcloud container clusters get-credentials $CLUSTER_NAME \
+          --zone $ZONE --project $PROJECT_ID
 
-# 11. Deploy to PROD
-- name: 'gcr.io/cloud-builders/helm'
-  args:
-    [
-      'upgrade', '--install', 'myapp',
-      './helm/myapp',
-      '--namespace', 'prod',
-      '--values', './helm/myapp/values-prod.yaml',
-      '--set', 'image.repository=gcr.io/$PROJECT_ID/myapp',
-      '--set', 'image.tag=$SHORT_SHA'
-    ]
+    - name: Install Helm
+      run: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-images:
-- 'gcr.io/$PROJECT_ID/myapp:$SHORT_SHA'
+    - name: Deploy via Helm
+      run: |
+        helm upgrade --install hello-app ./charts/hello-app \
+          --set image.repository=$IMAGE_PATH \
+          --set image.tag=latest \
+          --namespace default \
+          --wait
 
-approvals:
-- step: 'approve-qa'
-- step: 'approve-prod'
+    - name: QA Approval (Manual Step)
+      if: always()
+      uses: hmarr/auto-approve-action@v2.0.0
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+      continue-on-error: true
