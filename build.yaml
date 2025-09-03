@@ -1,40 +1,105 @@
-steps:
-# Step 1: SSH into bastion and forward GKE API port
-- name: 'gcr.io/cloud-builders/gcloud'
-  entrypoint: 'bash'
-  args:
-    - '-c'
-    - |
-      echo "Forwarding Kubernetes API port through bastion..."
-      gcloud compute ssh bastion-vm \
-        --project=<HOST_PROJECT_ID> \
-        --zone=<ZONE> \
-        --tunnel-through-iap \
-        -- -N -L 6443:<GKE_PRIVATE_ENDPOINT>:443 &
+substitutions:
+  _ENV: "dev"                # default environment, overridden by trigger
+  _CLUSTER: "your-gke-cluster"
+  _ZONE: "your-cluster-zone"
+  _NAMESPACE: "default"
 
-# Step 2: Configure kubeconfig to point to forwarded port
-- name: 'gcr.io/cloud-builders/kubectl'
-  entrypoint: 'bash'
-  args:
-    - '-c'
-    - |
-      kubectl config set-cluster <CLUSTER_NAME> --server=https://localhost:6443
-      kubectl config set-credentials deployer --token=$(gcloud auth print-access-token)
-      kubectl config set-context deploy-context --cluster=<CLUSTER_NAME> --user=deployer
-      kubectl config use-context deploy-context
- 
-# Step 3: Deploy Helm charts
-- name: 'alpine/helm:3.12.0'
-  entrypoint: 'bash'
-  args:
-    - '-c'
-    - |
-      helm upgrade --install my-app ./charts/my-app -n default
-timeout: '1200s'
-
+# Run all steps inside your private pool
 options:
-  workerPool: projects/<CICD_PROJECT>/locations/<REGION>/workerPools/<POOL_NAME>
+  pool:
+    name: projects/$PROJECT_ID/locations/asia-south1/workerPools/my-private-pool
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
 
+steps:
+# 1. Fetch app code
+- name: 'gcr.io/cloud-builders/git'
+  entrypoint: 'bash'
+  args:
+    - 'scripts/fetch-app.sh'
 
-https://cloud.google.com/build/docs/private-pools/accessing-private-gke-clusters-with-cloud-build-private-pools#architecture_overview
- 
+# 2. Build Docker image
+- name: 'gcr.io/cloud-builders/docker'
+  args:
+    [
+      'build',
+      '-t', 'gcr.io/$PROJECT_ID/myapp:$SHORT_SHA',
+      './app'
+    ]
+
+# 3. Push Docker image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/myapp:$SHORT_SHA']
+
+# 4. Scan Docker image with Trivy
+- name: 'aquasec/trivy'
+  args: ['image', 'gcr.io/$PROJECT_ID/myapp:$SHORT_SHA']
+
+# 5. Fetch GKE credentials for private cluster
+- name: 'gcr.io/cloud-builders/gcloud'
+  args:
+    [
+      'container', 'clusters', 'get-credentials', '$_CLUSTER',
+      '--zone', '$_ZONE', '--project', '$PROJECT_ID'
+    ]
+
+# 6. Run OPA/Conftest policies (optional gate)
+- name: 'openpolicyagent/conftest'
+  args: ['test', './helm/myapp/templates', '--policy', './policies']
+
+# 7. Deploy to DEV (auto)
+- name: 'gcr.io/cloud-builders/helm'
+  args:
+    [
+      'upgrade', '--install', 'myapp',
+      './helm/myapp',
+      '--namespace', '$_NAMESPACE',
+      '--values', './helm/myapp/values-$(_ENV).yaml',
+      '--set', 'image.repository=gcr.io/$PROJECT_ID/myapp',
+      '--set', 'image.tag=$SHORT_SHA'
+    ]
+
+# 8. Approval for QA
+- name: 'gcr.io/cloud-builders/gcloud'
+  id: 'approve-qa'
+  waitFor: ['-']  # manual step
+  entrypoint: 'bash'
+  args: ['-c', 'echo "Waiting for QA approval..."']
+
+# 9. Deploy to QA
+- name: 'gcr.io/cloud-builders/helm'
+  args:
+    [
+      'upgrade', '--install', 'myapp',
+      './helm/myapp',
+      '--namespace', 'qa',
+      '--values', './helm/myapp/values-qa.yaml',
+      '--set', 'image.repository=gcr.io/$PROJECT_ID/myapp',
+      '--set', 'image.tag=$SHORT_SHA'
+    ]
+
+# 10. Approval for PROD
+- name: 'gcr.io/cloud-builders/gcloud'
+  id: 'approve-prod'
+  waitFor: ['-']
+  entrypoint: 'bash'
+  args: ['-c', 'echo "Waiting for PROD approval..."']
+
+# 11. Deploy to PROD
+- name: 'gcr.io/cloud-builders/helm'
+  args:
+    [
+      'upgrade', '--install', 'myapp',
+      './helm/myapp',
+      '--namespace', 'prod',
+      '--values', './helm/myapp/values-prod.yaml',
+      '--set', 'image.repository=gcr.io/$PROJECT_ID/myapp',
+      '--set', 'image.tag=$SHORT_SHA'
+    ]
+
+images:
+- 'gcr.io/$PROJECT_ID/myapp:$SHORT_SHA'
+
+approvals:
+- step: 'approve-qa'
+- step: 'approve-prod'
