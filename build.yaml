@@ -12,3 +12,15 @@ sudo apt-get update && sudo apt-get install -y libicu70 libssl3 libkrb5-3 zlib1g
 
 
 ./run.sh
+
+
+gcloud compute routers create github-nat-router \
+  --network=default \
+  --region=us-east4
+
+gcloud compute routers nats create github-nat \
+  --router=github-nat-router \
+  --auto-allocate-nat-external-ips \
+  --nat-all-subnet-ip-ranges \
+  --enable-logging \
+  --region=us-east4
