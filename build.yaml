@@ -1,81 +1,14 @@
-name: Build and Deploy to GKE
+ARCH=$(uname -m)
+RUNNER_VERSION=$(curl -s https://api.github.com/repos/actions/runner/releases/latest | grep tag_name | cut -d '"' -f4)
+curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/download/${RUNNER_VERSION}/actions-runner-linux-${ARCH}.tar.gz
+tar xzf actions-runner.tar.gz
 
-on:
-  push:
-    branches:
-      - main  # Adjust based on your deployment branch
 
-env:
-  PROJECT_ID: gpcp2p-q-pymt
-  LOCATION: us-east4
-  CLUSTER_NAME: gpcp2p-q-pymt-use4-gke
-  IMAGE_PATH: us-docker.pkg.dev/gpcp2p-q-pymt/gpcp2p-q-pymt-test
-  IMAGE_NAME: hello-app
-  NAMESPACE: default
+sudo apt-get update && sudo apt-get install -y libicu70 libssl3 libkrb5-3 zlib1g libcurl4
 
-jobs:
-  build-and-deploy:
-    name: Build, Scan, Push, and Deploy
-    runs-on: ubuntu-latest
 
-    permissions:
-      contents: 'read'
-      id-token: 'write'  # Required for Workload Identity Federation
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+./config.sh --url https://github.com/YOUR_ORG/YOUR_REPO --token YOUR_TOKEN
 
-    # Authenticate with Google Cloud using Workload Identity Federation
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v2
-      with:
-        workload_identity_provider: 'projects/123456789/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID'  # Replace
-        service_account: 'cloudbuild-sa@gpcp2p-q-pymt.iam.gserviceaccount.com'
 
-    - name: Set up gcloud SDK
-      uses: google-github-actions/setup-gcloud@v2
-
-    - name: Configure Docker to use gcloud as a credential helper
-      run: gcloud auth configure-docker us-docker.pkg.dev
-
-    - name: Extract short SHA
-      id: vars
-      run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
-
-    - name: Build Docker image
-      run: |
-        docker build -t $IMAGE_PATH/$IMAGE_NAME:$SHORT_SHA .
-
-    - name: Scan Dockerfile with Checkov
-      uses: bridgecrewio/checkov-action@v12
-      with:
-        directory: '.'
-        file: 'Dockerfile'
-        quiet: true
-      continue-on-error: true
-
-    - name: Push Docker image
-      run: |
-        docker push $IMAGE_PATH/$IMAGE_NAME:$SHORT_SHA
-
-    - name: Get GKE credentials
-      run: |
-        gcloud container clusters get-credentials "$CLUSTER_NAME" \
-          --region "$LOCATION" \
-          --project "$PROJECT_ID" \
-          --internal-ip
-        kubectl get nodes --insecure-skip-tls-verify=true || true
-
-    - name: Install Helm
-      run: |
-        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-        helm version
-
-    - name: Deploy to GKE using Helm
-      run: |
-        helm upgrade --install $IMAGE_NAME ./charts/hello-app \
-          --set image.repository=$IMAGE_PATH/$IMAGE_NAME \
-          --set image.tag=$SHORT_SHA \
-          --namespace $NAMESPACE \
-          --wait
+./run.sh
