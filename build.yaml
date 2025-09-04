@@ -1,26 +1,5 @@
-ARCH=$(uname -m)
-RUNNER_VERSION=$(curl -s https://api.github.com/repos/actions/runner/releases/latest | grep tag_name | cut -d '"' -f4)
-curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/download/${RUNNER_VERSION}/actions-runner-linux-${ARCH}.tar.gz
-tar xzf actions-runner.tar.gz
-
-
-sudo apt-get update && sudo apt-get install -y libicu70 libssl3 libkrb5-3 zlib1g libcurl4
-
-
-
-./config.sh --url https://github.com/YOUR_ORG/YOUR_REPO --token YOUR_TOKEN
-
-
-./run.sh
-
-
-gcloud compute routers create github-nat-router \
-  --network=default \
-  --region=us-east4
-
-gcloud compute routers nats create github-nat \
-  --router=github-nat-router \
-  --auto-allocate-nat-external-ips \
-  --nat-all-subnet-ip-ranges \
-  --enable-logging \
-  --region=us-east4
+gcloud recommender recommendations list \
+  --recommender=google.container.DiagnosisRecommender \
+  --location=us-east4 \
+  --project=YOUR_PROJECT_ID \
+  --filter="recommenderSubtype:NODE_SA_MISSING_PERMISSIONS"
