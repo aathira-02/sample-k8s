@@ -1,8 +1,4 @@
-gcloud artifacts repositories add-iam-policy-binding gpcp2p-q-pymt-test \
-  --location=us-east4 \
-  --project=gpcp2pe-n-net \
-  --member="serviceAccount:<GKE_NODE_SERVICE_ACCOUNT>" \
-  --role="roles/artifactregistry.reader"
-
-
-gcloud artifacts docker images list us-docker.pkg.dev/gpcp2pe-n-net/gpcp2p-q-pymt-test
+gcloud container clusters describe gpcp2p-q-pymt-use4-gke \
+  --region us-east4 \
+  --project gpcp2p-q-pymt \
+  --format="get(clusterIpv4Cidr, ipAllocationPolicy.podCidr, ipAllocationPolicy.clusterSecondaryRangeName)"
