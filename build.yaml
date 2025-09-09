@@ -1,1 +1,1 @@
-https://raw.githubusercontent.com/GoogleCloudPlatform/secrets-store-csi-driver-provider-gcp/main/deploy/provider-gcp-plugin.yaml
+kubectl apply -f https://raw.githubusercontent.com/external-secrets/external-secrets/v0.9.19/deploy/crds/externalsecrets-crds.yaml
