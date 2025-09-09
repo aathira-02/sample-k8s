@@ -1,5 +1,1 @@
-gcloud compute network-endpoint-groups set-iam-policy k8s1-...hello-app-8080 \
-  --zone=us-central1-a \
-  --project=project-p \
-  --member="serviceAccount:123456789012@cloudservices.gserviceaccount.com" \
-  --role="roles/compute.networkEndpointGroupUse"
+https://raw.githubusercontent.com/GoogleCloudPlatform/secrets-store-csi-driver-provider-gcp/main/deploy/provider-gcp-plugin.yaml
