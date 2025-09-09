@@ -1,1 +1,1 @@
-kubectl apply -f https://raw.githubusercontent.com/external-secrets/external-secrets/v0.9.19/deploy/crds/externalsecrets-crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/external-secrets/external-secrets/v0.16.1/deploy/crds/bundle.yaml
