@@ -1,1 +1,89 @@
-kubectl apply -f https://raw.githubusercontent.com/external-secrets/external-secrets/v0.16.1/deploy/crds/bundle.yaml
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
+resource "google_compute_network" "vpc_network" {
+  name                    = var.vpc_name
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "subnet" {
+  name          = var.subnet_name
+  ip_cidr_range = var.subnet_cidr
+  region        = var.region
+  network       = google_compute_network.vpc_network.id
+}
+
+# Reserve an IP range for Private Service Access
+resource "google_compute_global_address" "psa_ip_range" {
+  name          = var.psa_range_name
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = var.psa_prefix_length
+  network       = google_compute_network.vpc_network.id
+  address       = var.psa_ip_address  # Optional: omit to let GCP choose one
+}
+
+# Establish Private Service Access connection
+resource "google_service_networking_connection" "private_service_connection" {
+  network                 = google_compute_network.vpc_network.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.psa_ip_range.name]
+}
+
+project_id         = "my-gcp-project"
+region             = "us-central1"
+vpc_name           = "my-vpc"
+subnet_name        = "my-subnet"
+subnet_cidr        = "10.0.0.0/24"
+psa_range_name     = "psa-range"
+psa_prefix_length  = 24
+psa_ip_address     = "10.0.1.0"  # Optional
+
+variable "project_id" {
+  description = "The ID of the GCP project"
+  type        = string
+}
+
+variable "region" {
+  description = "The GCP region to deploy resources in"
+  type        = string
+  default     = "us-central1"
+}
+
+variable "vpc_name" {
+  description = "The name of the VPC network"
+  type        = string
+  default     = "my-vpc"
+}
+
+variable "subnet_name" {
+  description = "The name of the subnet"
+  type        = string
+  default     = "my-subnet"
+}
+
+variable "subnet_cidr" {
+  description = "The CIDR range of the subnet"
+  type        = string
+  default     = "10.0.0.0/24"
+}
+
+variable "psa_range_name" {
+  description = "The name of the reserved IP range for Private Service Access"
+  type        = string
+  default     = "psa-range"
+}
+
+variable "psa_prefix_length" {
+  description = "The prefix length of the reserved PSA range (e.g., 24 for a /24)"
+  type        = number
+  default     = 24
+}
+
+variable "psa_ip_address" {
+  description = "The starting IP address of the PSA reserved range (optional)"
+  type        = string
+  default     = "10.0.1.0"
+}
