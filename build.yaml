@@ -3,87 +3,194 @@ provider "google" {
   region  = var.region
 }
 
-resource "google_compute_network" "vpc_network" {
-  name                    = var.vpc_name
-  auto_create_subnetworks = false
-}
+resource "google_container_cluster" "autopilot_gke" {
+  name     = var.cluster_name
+  location = var.region
 
-resource "google_compute_subnetwork" "subnet" {
-  name          = var.subnet_name
-  ip_cidr_range = var.subnet_cidr
-  region        = var.region
-  network       = google_compute_network.vpc_network.id
-}
+  enable_autopilot = true
 
-# Reserve an IP range for Private Service Access
-resource "google_compute_global_address" "psa_ip_range" {
-  name          = var.psa_range_name
-  purpose       = "VPC_PEERING"
-  address_type  = "INTERNAL"
-  prefix_length = var.psa_prefix_length
-  network       = google_compute_network.vpc_network.id
-  address       = var.psa_ip_address  # Optional: omit to let GCP choose one
-}
+  release_channel {
+    channel = var.release_channel
+  }
 
-# Establish Private Service Access connection
-resource "google_service_networking_connection" "private_service_connection" {
-  network                 = google_compute_network.vpc_network.id
-  service                 = "servicenetworking.googleapis.com"
-  reserved_peering_ranges = [google_compute_global_address.psa_ip_range.name]
-}
+  network    = var.network
+  subnetwork = var.subnetwork
 
-project_id         = "my-gcp-project"
-region             = "us-central1"
-vpc_name           = "my-vpc"
-subnet_name        = "my-subnet"
-subnet_cidr        = "10.0.0.0/24"
-psa_range_name     = "psa-range"
-psa_prefix_length  = 24
-psa_ip_address     = "10.0.1.0"  # Optional
+  ip_allocation_policy {
+    cluster_secondary_range_name  = var.cluster_secondary_range_name
+    services_secondary_range_name = var.services_secondary_range_name
+  }
+
+  private_cluster_config {
+    enable_private_nodes    = true
+    enable_private_endpoint = true
+    master_ipv4_cidr_block  = var.master_ipv4_cidr_block
+
+    master_global_access_config {
+      enabled = var.enable_master_global_access
+    }
+
+    master_authorized_networks_config {
+      enabled = var.enable_master_authorized_networks
+
+      cidr_blocks = var.authorized_networks
+    }
+  }
+
+  dns_config {
+    cluster_dns       = "CLOUD_DNS"
+    cluster_dns_scope = "CLUSTER_SCOPE"
+  }
+
+  enable_fqdn_network_policy = true
+
+  binary_authorization {
+    evaluation_mode = var.binauthz_evaluation_mode
+  }
+
+  cluster_encryption {
+    key_name = var.boot_disk_kms_key
+  }
+
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  autopilot {
+    workload_identity_config {
+      identity_namespace = "${var.project_id}.svc.id.goog"
+    }
+  }
+
+  fleet {
+    project = var.fleet_project_id
+  }
+
+  node_config {
+    service_account = var.service_account
+  }
+}
 
 variable "project_id" {
-  description = "The ID of the GCP project"
+  description = "The GCP project ID"
+  type        = string
+}
+
+variable "fleet_project_id" {
+  description = "Fleet project ID"
   type        = string
 }
 
 variable "region" {
-  description = "The GCP region to deploy resources in"
+  description = "The GCP region to deploy the cluster"
   type        = string
   default     = "us-central1"
 }
 
-variable "vpc_name" {
-  description = "The name of the VPC network"
+variable "cluster_name" {
+  description = "Name of the GKE Autopilot cluster"
   type        = string
-  default     = "my-vpc"
 }
 
-variable "subnet_name" {
-  description = "The name of the subnet"
+variable "release_channel" {
+  description = "GKE release channel"
   type        = string
-  default     = "my-subnet"
+  default     = "REGULAR"
 }
 
-variable "subnet_cidr" {
-  description = "The CIDR range of the subnet"
+variable "network" {
+  description = "VPC network self-link"
   type        = string
-  default     = "10.0.0.0/24"
 }
 
-variable "psa_range_name" {
-  description = "The name of the reserved IP range for Private Service Access"
+variable "subnetwork" {
+  description = "Subnetwork self-link"
   type        = string
-  default     = "psa-range"
 }
 
-variable "psa_prefix_length" {
-  description = "The prefix length of the reserved PSA range (e.g., 24 for a /24)"
-  type        = number
-  default     = 24
+variable "cluster_secondary_range_name" {
+  description = "Secondary range name for Pods"
+  type        = string
 }
 
-variable "psa_ip_address" {
-  description = "The starting IP address of the PSA reserved range (optional)"
+variable "services_secondary_range_name" {
+  description = "Secondary range name for Services"
   type        = string
-  default     = "10.0.1.0"
 }
+
+variable "master_ipv4_cidr_block" {
+  description = "IPv4 CIDR block for master nodes"
+  type        = string
+  default     = "172.16.0.16/28"
+}
+
+variable "enable_master_global_access" {
+  description = "Enable global access to master"
+  type        = bool
+  default     = true
+}
+
+variable "enable_master_authorized_networks" {
+  description = "Enable authorized networks"
+  type        = bool
+  default     = true
+}
+
+variable "authorized_networks" {
+  description = "List of authorized networks for the master"
+  type = list(object({
+    cidr_block   = string
+    display_name = string
+  }))
+  default = [
+    {
+      cidr_block   = "203.0.113.0/24"
+      display_name = "corp-net"
+    }
+  ]
+}
+
+variable "binauthz_evaluation_mode" {
+  description = "Binary Authorization evaluation mode"
+  type        = string
+  default     = "PROJECT_SINGLETON_POLICY_ENFORCE"
+}
+
+variable "boot_disk_kms_key" {
+  description = "KMS key for boot disk encryption"
+  type        = string
+}
+
+variable "service_account" {
+  description = "Service account for workloads"
+  type        = string
+}
+
+project_id                   = "gpcp2p-q-pymt"
+fleet_project_id             = "gpcpp-q-pymt"
+region                       = "us-central1"
+cluster_name                 = "gpcp2p-q-pymt-usc1-token-mgcl-gke"
+release_channel              = "REGULAR"
+
+network                     = "projects/gpcp2pe-n-net/global/networks/gpcp2pe-n-net-vpc"
+subnetwork                  = "projects/gpcp2pe-n-net/regions/us-central1/subnetworks/p2pe-sn-usc1"
+
+cluster_secondary_range_name  = "p2pe-sn-usc1-sec1"
+services_secondary_range_name = "p2pe-sn-usc1-sec2"
+
+master_ipv4_cidr_block        = "172.16.0.16/28"
+enable_master_global_access   = true
+enable_master_authorized_networks = true
+
+authorized_networks = [
+  {
+    cidr_block   = "203.0.113.0/24"
+    display_name = "corp-net"
+  }
+]
+
+binauthz_evaluation_mode = "PROJECT_SINGLETON_POLICY_ENFORCE"
+
+boot_disk_kms_key = "projects/gpcp2p-q-pymt/locations/us-central1/keyRings/gpcp2p-q-pymt-usc1-gke-cluster-boot-enc-kr/cryptoKeys/gpcp2p-q-pymt-usc1-gke-cluster-boot-enc-K"
+
+service_account = "gke-sa@gpcp2p-q-pymt.iam.gserviceaccount.com"
