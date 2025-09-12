@@ -1,86 +1,46 @@
-resource "google_service_account" "service_accounts" {
-  for_each = var.service_accounts
-
-  account_id   = each.key
-  display_name = each.value.description
-  project      = var.project_id
-}
-
-resource "google_project_iam_member" "service_account_roles" {
-  for_each = {
-    for sa_name, sa in var.service_accounts : 
-    for role in sa.roles : 
-    "${sa_name}-${role}" => {
-      sa_email = "${sa_name}@${var.project_id}.iam.gserviceaccount.com"
-      role     = role
-    }
-  }
-
+provider "google" {
   project = var.project_id
-  role    = each.value.role
-  member  = "serviceAccount:${each.value.sa_email}"
+  region  = var.region
 }
 
+resource "google_kms_key_ring" "key_ring" {
+  name     = var.key_ring_name
+  location = var.region
+}
 
+resource "google_kms_crypto_key" "crypto_key" {
+  name            = var.crypto_key_name
+  key_ring        = google_kms_key_ring.key_ring.id
+  rotation_period = "100000s" # Optional: Key rotation
 
-
-
-project_id = "gpcp2p-q-pymt"
-
-service_accounts = {
-  "gke-sa" = {
-    description = "Service account for GKE"
-    roles = [
-      "roles/container.nodeServiceAccount",
-      "roles/logging.logWriter"
-    ]
-  }
-
-  "cloudbuild-sa" = {
-    description = "Service account for Cloud Build"
-    roles = [
-      "roles/cloudbuild.builds.editor",
-      "roles/storage.admin"
-    ]
-  }
-
-  "monitoring-sa" = {
-    description = "Monitoring service account"
-    roles = [
-      "roles/monitoring.viewer",
-      "roles/logging.viewer"
-    ]
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
 
 variable "project_id" {
-  description = "Project ID where the service accounts will be created"
+  description = "GCP Project ID"
   type        = string
 }
 
-variable "service_accounts" {
-  description = <<EOF
-Map of service accounts with roles. Example:
-{
-  "gke-sa" = {
-    description = "Service account for GKE"
-    roles       = [
-      "roles/container.nodeServiceAccount",
-      "roles/logging.logWriter"
-    ]
-  },
-  "cloudbuild-sa" = {
-    description = "Service account for Cloud Build"
-    roles       = [
-      "roles/cloudbuild.builds.editor",
-      "roles/storage.admin"
-    ]
-  }
+variable "region" {
+  description = "Region for the KMS resources (e.g., us-central1)"
+  type        = string
 }
-EOF
-  type = map(object({
-    description = string
-    roles       = list(string)
-  }))
+
+variable "key_ring_name" {
+  description = "Name of the KMS Key Ring"
+  type        = string
 }
+
+variable "crypto_key_name" {
+  description = "Name of the KMS Crypto Key"
+  type        = string
+}
+
+
+project_id      = "your-gcp-project-id"
+region          = "us-central1"
+key_ring_name   = "example-key-ring"
+crypto_key_name = "example-crypto-key"
