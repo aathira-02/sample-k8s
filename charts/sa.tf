@@ -1,112 +1,42 @@
-resource "google_container_cluster" "pci_gke_cluster" {
-  name       = var.cluster_name
-  location   = var.region
-  project    = var.project_id
+provider "google" {
+  project = "your-gcp-project-id"
+  region  = "us-central1"
+  zone    = "us-central1-a"
+}
 
-  network    = local.network
-  subnetwork = local.subnetwork
+# Create health check
+resource "google_compute_health_check" "default" {
+  name               = "example-health-check"
+  check_interval_sec = 5
+  timeout_sec        = 5
+  healthy_threshold  = 2
+  unhealthy_threshold = 2
 
-  initial_node_count  = var.initial_node_count
-  deletion_protection = var.gke_cluster_deletion_protection
-  enable_autopilot    = true
-
-  resource_labels = {
-    "mesh_id" = "proj-${var.project_id}"
-  }
-
-  cluster_autoscaling {
-    auto_provisioning_defaults {
-      service_account    = module.gke_node_sa.service_account_email
-      boot_disk_kms_key  = module.kms_gke_boot_enc_layer.key_id
-    }
-  }
-
-  binary_authorization {
-    evaluation_mode = var.enable_binary_authorization
-  }
-
-  release_channel {
-    channel = var.release_channel
-  }
-
-  ip_allocation_policy {
-    cluster_secondary_range_name  = var.cluster_secondary_range_name
-    services_secondary_range_name = var.services_secondary_range_name
-  }
-
-  database_encryption {
-    state     = "ENCRYPTED"
-    key_name  = module.kms_gke_app_layer.key_id
-  }
-
-  private_cluster_config {
-    enable_private_nodes    = true
-    enable_private_endpoint = true
-    master_ipv4_cidr_block  = var.gke_master_ipv4_cidr_block
-
-    master_global_access_config {
-      enabled = var.global_access
-    }
-  }
-
-  master_authorized_networks_config {
-    cidr_blocks = [
-      {
-        cidr_block   = "10.10.0.0/24"
-        display_name = "admin-network"
-      },
-      {
-        cidr_block   = "192.168.100.0/24"
-        display_name = "corp-network"
-      }
-    ]
-  }
-
-  security_posture_config {
-    vulnerability_mode = "VULNERABILITY_ENTERPRISE"
-  }
-
-  logging_config {
-    enable_components = [
-      "SYSTEM_COMPONENTS",
-      "WORKLOADS",
-      "APISERVER",
-      "CONTROLLER_MANAGER",
-      "SCHEDULER"
-    ]
-  }
-
-  maintenance_policy {
-    daily_maintenance_window {
-      start_time = "03:00"
-    }
-
-    recurring_window {
-      start_time = "2025-10-01T03:00:00Z"
-      end_time   = "2025-10-01T06:00:00Z"
-      recurrence = "FREQ=WEEKLY;BYDAY=MO"
-    }
-
-    maintenance_exclusion {
-      exclusion_name = "holiday-exclusion"
-      start_time     = "2025-12-25T00:00:00Z"
-      end_time       = "2025-12-26T00:00:00Z"
-    }
+  http_health_check {
+    port = 80
+    request_path = "/"
   }
 }
 
-resource "google_gke_hub_membership" "membership" {
-  membership_id = var.fleet_membership_type
-  location      = var.region
-  project       = var.project_id
+# Reference to an existing instance group
+data "google_compute_instance_group" "default" {
+  name = "example-instance-group"
+  zone = "us-central1-a"
+}
 
-  endpoint {
-    gke_cluster {
-      resource_link = "//container.googleapis.com/${google_container_cluster.pci_gke_cluster.id}"
-    }
+# Backend service
+resource "google_compute_backend_service" "default" {
+  name                            = "example-backend-service"
+  protocol                        = "HTTP"
+  port_name                       = "http"
+  timeout_sec                     = 10
+  connection_draining_timeout_sec = 0
+  health_checks                   = [google_compute_health_check.default.self_link]
+  load_balancing_scheme           = "EXTERNAL"
+
+  backend {
+    group = data.google_compute_instance_group.default.self_link
+    balancing_mode = "UTILIZATION"
+    max_utilization = 0.8
   }
-
-  depends_on = [
-    google_container_cluster.pci_gke_cluster
-  ]
 }
