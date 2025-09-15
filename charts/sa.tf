@@ -1,42 +1,55 @@
 provider "google" {
-  project = "your-gcp-project-id"
-  region  = "us-central1"
-  zone    = "us-central1-a"
+  project = var.project_id
+  region  = var.region
+  zone    = var.zone
 }
 
-# Create health check
-resource "google_compute_health_check" "default" {
-  name               = "example-health-check"
-  check_interval_sec = 5
-  timeout_sec        = 5
-  healthy_threshold  = 2
-  unhealthy_threshold = 2
+resource "google_compute_instance" "vm_instance" {
+  name         = var.name
+  project      = var.project_id
+  zone         = var.zone
+  machine_type = var.machine_type
+  deletion_protection = var.deletion_protection
 
-  http_health_check {
-    port = 80
-    request_path = "/"
+  metadata = var.metadata
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-12"
+      size  = var.bootdisk_size
+      type  = var.disk
+    }
+  }
+
+  network_interface {
+    network    = data.google_compute_network.vpc_network.self_link
+    subnetwork = data.google_compute_subnetwork.vpc_subnet.self_link
+
+    access_config {
+      // This block enables external IP
+    }
+  }
+
+  service_account {
+    email  = data.google_service_account.compute_service_account.email
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
 }
 
-# Reference to an existing instance group
-data "google_compute_instance_group" "default" {
-  name = "example-instance-group"
-  zone = "us-central1-a"
+
+project_id          = "my-gcp-project"
+region              = "us-central1"
+zone                = "us-central1-a"
+name                = "my-debian12-vm"
+machine_type        = "e2-medium"
+bootdisk_size       = 20
+disk                = "pd-balanced"
+deletion_protection = false
+
+metadata = {
+  startup-script = "echo Hello, World from Debian 12 > /var/tmp/startup.txt"
 }
 
-# Backend service
-resource "google_compute_backend_service" "default" {
-  name                            = "example-backend-service"
-  protocol                        = "HTTP"
-  port_name                       = "http"
-  timeout_sec                     = 10
-  connection_draining_timeout_sec = 0
-  health_checks                   = [google_compute_health_check.default.self_link]
-  load_balancing_scheme           = "EXTERNAL"
-
-  backend {
-    group = data.google_compute_instance_group.default.self_link
-    balancing_mode = "UTILIZATION"
-    max_utilization = 0.8
-  }
-}
+network             = "default"
+subnet              = "default"
+service_account_id  = "my-vm-sa"
